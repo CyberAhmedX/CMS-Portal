@@ -39,7 +39,7 @@ A campus management system that runs in the terminal, written in C++17. It has t
 
 ### Security fixes from self-review
 
-This is a rewrite of a first-semester project. Reviewing the original code, I found and fixed these problems:
+This started as my university Object-Oriented Programming course project. Reviewing the original code later, I found and fixed these problems:
 
 - **Plain-text passwords** in `studentacc.txt` and `facultyacc.txt`. They are now salted hashes.
 - **"Forgot password" printed the password** to anyone who typed a username. It now points to an admin reset.
@@ -115,6 +115,14 @@ student	sara	pbkdf2-sha256$600000$<salt>$<hash>	0	0
 ```
 
 These fields are: role, username, password hash, wrong attempts so far and the lock end time.
+
+## OOP design
+
+The project keeps the object-oriented design from the course:
+
+- **Inheritance and polymorphism:** `Admin`, `Faculty` and `Student` inherit from an abstract `User` class. `AdminDashboard`, `FacultyDashboard` and `StudentDashboard` inherit from `Dashboard`, which runs the shared menu loop and calls each one's virtual `title()`, `options()` and `handle()`.
+- **Encapsulation:** all records live inside the `Portal` class, and the only way to change them is through its methods, which enforce the rules.
+- **Separation of concerns:** crypto, storage, rules and screens are separate classes, so the rules can be tested without the menus.
 
 ## Project structure
 
