@@ -2,30 +2,34 @@
 
 A campus management system that runs in the terminal, written in C++17. It has three portals: admins manage accounts, faculty run their subjects (attendance and marks), and students register for subjects and follow their progress. Passwords are stored as salted PBKDF2 hashes, every action is checked against the user's role, and the project builds and is tested on Windows, Linux and macOS.
 
-![Class report in the faculty portal](docs/screenshots/03-class-report.png)
+Every screen has the same layout: a campus card with your name and the current term, a row of numbered tabs, and the page for the tab you picked.
+
+![A student's attendance page](docs/screenshots/04-student-attendance.png)
 
 ## Features
 
 **Admin portal**
 - Created on first run. There is no default admin password.
 - Look up a faculty member (and what they teach) or a student (and what they take)
-- List every account
+- Faculty list with subjects and student counts, and a student list with each student's overall attendance
 - Reset a forgotten password, which also unlocks a locked account
 
 **Faculty portal**
 - Add subjects with credit hours
 - Mark attendance for a class on any past date, one P or A per registered student
 - Give marks from 0 to 100
-- Class report: each student's attendance percentage and mark
+- Class report: each student's attendance, mark and last 7 classes, the class average, and who is below 75% attendance
 
 **Student portal**
 - Register for subjects and see total credit hours
-- View marks and attendance per subject, such as "5 of 6 classes (83%)"
+- Marks per subject with an average
+- Attendance per subject, such as "5 / 6, 83%", with the last 7 classes as dots and an overall total
+- A warning for any subject below the 75% attendance requirement
 
 **Everyone**
 - Change your own password
 - Subject and user names can contain spaces and other characters without breaking anything
-- A wrong key at a menu prompt just asks again
+- A wrong key at a tab or number prompt just asks again
 
 ## Security
 
@@ -80,7 +84,7 @@ On the first run it asks you to create the admin account. Accounts and records a
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-There are 35 tests:
+There are 37 tests:
 
 - The SHA-256, HMAC and PBKDF2 code is checked against the official test vectors (FIPS 180-4, RFC 4231, RFC 7914).
 - The file format is checked for round trips.
@@ -98,9 +102,13 @@ GitHub Actions builds the project and runs the tests on Windows, Linux and macOS
 
 ![Marking attendance](docs/screenshots/02-mark-attendance.png)
 
-**A student's attendance**
+**Class report in the faculty portal**
 
-![Student attendance](docs/screenshots/04-student-attendance.png)
+![Class report](docs/screenshots/03-class-report.png)
+
+**Admin student list with overall attendance**
+
+![Student list](docs/screenshots/06-students.png)
 
 **Locked out after 5 wrong passwords**
 

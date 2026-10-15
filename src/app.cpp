@@ -1,9 +1,8 @@
 #include "cms/app.h"
 
+#include <cctype>
 #include <iostream>
 #include <map>
-
-#include "cms/console.h"
 
 namespace cms {
 
@@ -11,17 +10,10 @@ namespace c = console;
 
 namespace {
 
-std::string pad(const std::string& text, std::size_t width) {
-    return text.size() >= width ? text : text + std::string(width - text.size(), ' ');
-}
-
-std::string portalTitle(Role role) {
-    switch (role) {
-        case Role::Admin: return "ADMIN PORTAL";
-        case Role::Faculty: return "FACULTY PORTAL";
-        case Role::Student: return "STUDENT PORTAL";
-    }
-    return "PORTAL";
+std::string titleCase(const std::string& word) {
+    std::string out = word;
+    if (!out.empty()) out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+    return out;
 }
 
 std::string passwordRules() {
@@ -29,170 +21,228 @@ std::string passwordRules() {
            " characters, and not the same as the username.";
 }
 
-std::string percent(int part, int whole) {
-    if (whole == 0) return "-";
-    return std::to_string((part * 100 + whole / 2) / whole) + "%";
+int percent(int part, int whole) { return whole == 0 ? 0 : (part * 100 + whole / 2) / whole; }
+
+// "86%", or red when below the attendance requirement.
+std::string rate(int part, int whole) {
+    if (whole == 0) return c::dim("-");
+    int p = percent(part, whole);
+    std::string text = std::to_string(p) + "%";
+    return p < Portal::kMinAttendancePercent ? c::red(text) : text;
 }
+
+std::string lastClasses(const std::vector<AttendanceRecord>& history, std::size_t count = 7) {
+    std::vector<bool> present;
+    std::size_t start = history.size() > count ? history.size() - count : 0;
+    for (std::size_t i = start; i < history.size(); ++i) present.push_back(history[i].present);
+    return c::dots(present);
+}
+
+std::string credits(int hours) { return std::to_string(hours); }
 
 }  // namespace
 
 // ---------------------------------------------------------------- dashboard
 
 void Dashboard::run() {
+    std::vector<c::Tab> items = tabs();
+    int active = items.front().key;
     while (true) {
         c::clear();
-        c::title(title());
-        c::info("Signed in as " + user_.username() + " (" + roleName(user_.role()) + ")");
-        std::cout << "\n";
-        int choice = c::menu(options());
-        bool stay = true;
+        c::header(c::bold(user_.username()) + c::dim("  ·  ") + titleCase(roleName(user_.role())), portal_.term());
+        c::tabs(items, active);
         try {
-            stay = handle(choice);
+            show(active);
         } catch (const PortalError& e) {
-            c::error(e.what());
+            c::fail(e.what());
         }
-        if (!stay) return;
-        c::pause();
+        int next = c::chooseTab(items);
+        if (next == 0) return;
+        active = next;
     }
 }
 
-void Dashboard::changePassword() {
-    c::heading("Change password");
+void Dashboard::account() {
+    c::section("Account");
+    c::table({{"Username", 24}, {"Role", 12}}, {{user_.username(), titleCase(roleName(user_.role()))}});
+    std::cout << "\n";
+    if (!c::confirm("Change your password?")) return;
+    std::cout << "\n";
     std::string current = c::readPassword("Current password: ");
-    c::info(passwordRules());
+    c::hint(passwordRules());
     std::string next = c::readPassword("New password: ");
     if (c::readPassword("Repeat new password: ") != next) throw PortalError("The new passwords don't match.");
     portal_.changePassword(user_, current, next);
-    c::success("Password changed.");
+    c::ok("Password changed.");
 }
 
-std::string Dashboard::pickSubject(const std::vector<Subject>& subjects, const std::string& prompt) {
+std::string Dashboard::pickSubject(const std::vector<Subject>& subjects) {
+    std::vector<std::vector<std::string>> rows;
     for (std::size_t i = 0; i < subjects.size(); ++i) {
-        std::cout << "  " << pad(std::to_string(i + 1) + ".", 4) << subjects[i].name << "\n";
+        rows.push_back({std::to_string(i + 1), subjects[i].name, std::to_string(portal_.studentsIn(subjects[i].name).size())});
     }
+    c::table({{"#", 3, true}, {"Subject", 30}, {"Students", 8, true}}, rows);
     std::cout << "\n";
-    int choice = c::readInt(prompt + " (0 to cancel): ", 0, static_cast<int>(subjects.size()));
+    int choice = c::readInt("Subject number (0 to cancel): ", 0, static_cast<int>(subjects.size()));
     return choice == 0 ? "" : subjects[choice - 1].name;
 }
 
 // ---------------------------------------------------------------- admin
 
-std::string AdminDashboard::title() const { return "ADMIN PORTAL"; }
-
-std::vector<std::string> AdminDashboard::options() const {
-    return {"Find a faculty member", "Find a student", "List all accounts",
-            "Reset a password",      "Change my password", "Log out"};
+std::vector<c::Tab> AdminDashboard::tabs() const {
+    return {{1, "Faculty"}, {2, "Students"}, {3, "Find"}, {4, "Reset password"}, {5, "Account"}, {0, "Log out"}};
 }
 
-bool AdminDashboard::handle(int choice) {
-    switch (choice) {
-        case 1: findAccount(Role::Faculty); break;
-        case 2: findAccount(Role::Student); break;
-        case 3: listAccounts(); break;
+void AdminDashboard::show(int tab) {
+    switch (tab) {
+        case 1: facultyList(); break;
+        case 2: studentList(); break;
+        case 3: findAccount(); break;
         case 4: resetPassword(); break;
-        case 5: changePassword(); break;
-        default: return false;
+        default: account(); break;
     }
-    return true;
 }
 
-void AdminDashboard::findAccount(Role role) {
-    c::heading(role == Role::Faculty ? "Find a faculty member" : "Find a student");
-    std::string name = c::readLine("Username: ");
-    const User* user = portal_.findUser(role, name);
-    if (!user) {
-        c::error("No " + roleName(role) + " account named \"" + name + "\".");
+void AdminDashboard::facultyList() {
+    c::section("Faculty");
+    std::vector<const User*> list = portal_.users(Role::Faculty);
+    if (list.empty()) {
+        c::hint("No faculty accounts yet.");
         return;
     }
-    c::success(user->username() + " is a registered " + roleName(role) + ".");
+    std::vector<std::vector<std::string>> rows;
+    for (const User* u : list) {
+        std::vector<Subject> taught = portal_.subjectsTaughtBy(*u);
+        std::size_t students = 0;
+        for (const Subject& s : taught) students += portal_.studentsIn(s.name).size();
+        rows.push_back({u->username(), std::to_string(taught.size()), std::to_string(students)});
+    }
+    c::table({{"Username", 26}, {"Subjects", 8, true}, {"Students", 8, true}}, rows);
+}
 
-    if (role == Role::Faculty) {
-        std::vector<Subject> taught = portal_.subjectsTaughtBy(*user);
-        std::cout << "  Teaches: " << (taught.empty() ? "no subjects yet" : "") << "\n";
-        for (const Subject& s : taught) {
-            std::cout << "    - " << s.name << " (" << portal_.studentsIn(s.name).size() << " students)\n";
+void AdminDashboard::studentList() {
+    c::section("Students");
+    std::vector<const User*> list = portal_.users(Role::Student);
+    if (list.empty()) {
+        c::hint("No student accounts yet.");
+        return;
+    }
+    std::vector<std::vector<std::string>> rows;
+    int low = 0;
+    for (const User* u : list) {
+        int here = 0, total = 0;
+        for (const AttendanceSummary& a : portal_.attendanceFor(u->username())) {
+            here += a.attended;
+            total += a.total;
         }
-    } else {
-        std::vector<std::string> subjects = portal_.enrolledSubjects(user->username());
-        std::cout << "  Registered for: " << (subjects.empty() ? "no subjects yet" : "") << "\n";
-        for (const std::string& s : subjects) std::cout << "    - " << s << "\n";
+        if (total && percent(here, total) < Portal::kMinAttendancePercent) ++low;
+        rows.push_back({u->username(), std::to_string(portal_.enrolledSubjects(u->username()).size()), rate(here, total)});
+    }
+    c::table({{"Username", 26}, {"Subjects", 8, true}, {"Attendance", 10, true}}, rows);
+    if (low) {
+        std::cout << "\n";
+        c::warn(std::to_string(low) + (low == 1 ? " student is" : " students are") + " below " +
+                std::to_string(Portal::kMinAttendancePercent) + "% attendance overall.");
     }
 }
 
-void AdminDashboard::listAccounts() {
-    const std::pair<Role, const char*> groups[] = {
-        {Role::Admin, "Admins"}, {Role::Faculty, "Faculty"}, {Role::Student, "Students"}};
-    for (const auto& [role, label] : groups) {
-        std::vector<const User*> list = portal_.users(role);
-        c::heading(std::string(label) + " (" + std::to_string(list.size()) + ")");
-        if (list.empty()) std::cout << "  none\n";
-        for (const User* u : list) std::cout << "  " << u->username() << "\n";
+void AdminDashboard::findAccount() {
+    c::section("Find an account");
+    std::string name = c::readLine("Username: ");
+    std::cout << "\n";
+    for (Role role : {Role::Admin, Role::Faculty, Role::Student}) {
+        const User* user = portal_.findUser(role, name);
+        if (!user) continue;
+        c::ok(user->username() + " is a registered " + roleName(role) + ".");
+        std::cout << "\n";
+        if (role == Role::Faculty) {
+            std::vector<std::vector<std::string>> rows;
+            for (const Subject& s : portal_.subjectsTaughtBy(*user)) {
+                rows.push_back({s.name, credits(s.creditHours), std::to_string(portal_.studentsIn(s.name).size())});
+            }
+            if (rows.empty()) c::hint("Teaches no subjects yet.");
+            else c::table({{"Teaches", 30}, {"Credits", 7, true}, {"Students", 8, true}}, rows);
+        } else if (role == Role::Student) {
+            std::vector<std::vector<std::string>> rows;
+            for (const AttendanceSummary& a : portal_.attendanceFor(user->username())) {
+                rows.push_back({a.subject, rate(a.attended, a.total)});
+            }
+            if (rows.empty()) c::hint("Not registered for any subjects yet.");
+            else c::table({{"Registered for", 30}, {"Attendance", 10, true}}, rows);
+        }
+        return;
     }
+    c::fail("No account named \"" + name + "\".");
 }
 
 void AdminDashboard::resetPassword() {
-    c::heading("Reset a password");
-    c::info("Use this when someone forgets their password. It also unlocks the account.");
-    std::string name = c::readLine("Username: ");
-    c::info(passwordRules());
+    c::section("Reset a password");
+    c::hint("Use this when someone forgets their password. It also unlocks the account.");
+    std::cout << "\n";
+    std::string name = c::readLine("Username (Enter to cancel): ");
+    if (name.empty()) return;
+    c::hint(passwordRules());
     std::string password = c::readPassword("New password: ");
     if (c::readPassword("Repeat new password: ") != password) throw PortalError("The passwords don't match.");
     portal_.resetPassword(user_, name, password);
-    c::success("Password reset. Give the new password to " + Portal::normalizeUsername(name) +
-               " privately and ask them to change it.");
+    c::ok("Password reset. Give the new password to " + Portal::normalizeUsername(name) + " privately.");
 }
 
 // ---------------------------------------------------------------- faculty
 
-std::string FacultyDashboard::title() const { return "FACULTY PORTAL"; }
-
-std::vector<std::string> FacultyDashboard::options() const {
-    return {"Add a subject", "My subjects",  "Mark attendance",     "Give marks",
-            "Class report",  "Change my password", "Log out"};
+std::vector<c::Tab> FacultyDashboard::tabs() const {
+    return {{1, "Subjects"}, {2, "Add"}, {3, "Attendance"}, {4, "Marks"}, {5, "Report"}, {6, "Account"}, {0, "Log out"}};
 }
 
-bool FacultyDashboard::handle(int choice) {
-    switch (choice) {
-        case 1: addSubject(); break;
-        case 2: listSubjects(); break;
+void FacultyDashboard::show(int tab) {
+    switch (tab) {
+        case 1: mySubjects(); break;
+        case 2: addSubject(); break;
         case 3: markAttendance(); break;
         case 4: giveMarks(); break;
         case 5: classReport(); break;
-        case 6: changePassword(); break;
-        default: return false;
+        default: account(); break;
     }
-    return true;
+}
+
+void FacultyDashboard::mySubjects() {
+    c::section("My subjects");
+    std::vector<Subject> subjects = portal_.subjectsTaughtBy(user_);
+    if (subjects.empty()) {
+        c::hint("You haven't added any subjects yet. Use tab 2 to add one.");
+        return;
+    }
+    std::vector<std::vector<std::string>> rows;
+    std::size_t students = 0;
+    for (const Subject& s : subjects) {
+        std::size_t n = portal_.studentsIn(s.name).size();
+        students += n;
+        std::map<std::string, bool> dates;  // one class per date
+        for (const AttendanceRecord& r : portal_.attendanceRecords(s.name)) dates[r.date] = true;
+        rows.push_back({s.name, credits(s.creditHours), std::to_string(n), std::to_string(dates.size())});
+    }
+    c::table({{"Subject", 30}, {"Credits", 7, true}, {"Students", 8, true}, {"Classes held", 12, true}}, rows,
+             {"Total", "", std::to_string(students), ""});
 }
 
 void FacultyDashboard::addSubject() {
-    c::heading("Add a subject");
-    std::string name = c::readLine("Subject name: ");
+    c::section("Add a subject");
+    std::string name = c::readLine("Subject name (Enter to cancel): ");
+    if (name.empty()) return;
     std::string clean = Portal::cleanSubjectName(name);
-    int credits = c::readInt("Credit hours (" + std::to_string(Portal::kMinCredits) + "-" +
-                                 std::to_string(Portal::kMaxCredits) + "): ",
-                             Portal::kMinCredits, Portal::kMaxCredits);
-    portal_.addSubject(user_, clean, credits);
-    c::success("Added " + clean + ". Students can now register for it.");
-}
-
-void FacultyDashboard::listSubjects() {
-    c::heading("My subjects");
-    std::vector<Subject> subjects = portal_.subjectsTaughtBy(user_);
-    if (subjects.empty()) {
-        std::cout << "  You haven't added any subjects yet.\n";
-        return;
-    }
-    for (const Subject& s : subjects) {
-        std::cout << "  " << pad(s.name, 28) << s.creditHours << " credit hours, "
-                  << portal_.studentsIn(s.name).size() << " students\n";
-    }
+    int hours = c::readInt("Credit hours (" + std::to_string(Portal::kMinCredits) + "-" +
+                               std::to_string(Portal::kMaxCredits) + "): ",
+                           Portal::kMinCredits, Portal::kMaxCredits);
+    portal_.addSubject(user_, clean, hours);
+    std::cout << "\n";
+    c::ok("Added " + clean + ". Students can register for it now.");
 }
 
 void FacultyDashboard::markAttendance() {
-    c::heading("Mark attendance");
+    c::section("Mark attendance");
     std::vector<Subject> subjects = portal_.subjectsTaughtBy(user_);
     if (subjects.empty()) throw PortalError("Add a subject first.");
-    std::string subject = pickSubject(subjects, "Subject");
+    std::string subject = pickSubject(subjects);
     if (subject.empty()) return;
 
     std::vector<std::string> students = portal_.studentsIn(subject);
@@ -208,44 +258,47 @@ void FacultyDashboard::markAttendance() {
         return;
     }
 
-    std::cout << "\n  Type P for present or A for absent.\n";
+    std::cout << "\n";
+    c::hint("Type P for present or A for absent.");
     std::map<std::string, bool> present;
     for (const std::string& student : students) {
         while (true) {
-            std::string answer = c::readLine(pad(student, 20) + " P/A: ");
+            std::string answer = c::readLine(student + std::string(student.size() < 18 ? 18 - student.size() : 1, ' '));
             if (answer == "P" || answer == "p") { present[student] = true; break; }
             if (answer == "A" || answer == "a") { present[student] = false; break; }
-            c::error("Type P or A.");
+            c::fail("Type P or A.");
         }
     }
     portal_.recordAttendance(user_, subject, date, present);
 
     int here = 0;
     for (const auto& [_, p] : present) here += p ? 1 : 0;
-    c::success("Saved " + subject + " on " + date + ": " + std::to_string(here) + " of " +
-               std::to_string(present.size()) + " present.");
+    std::cout << "\n";
+    c::ok("Saved " + subject + " on " + date + ": " + std::to_string(here) + " of " +
+          std::to_string(present.size()) + " present.");
 }
 
 void FacultyDashboard::giveMarks() {
-    c::heading("Give marks");
+    c::section("Give marks");
     std::vector<Subject> subjects = portal_.subjectsTaughtBy(user_);
     if (subjects.empty()) throw PortalError("Add a subject first.");
-    std::string subject = pickSubject(subjects, "Subject");
+    std::string subject = pickSubject(subjects);
     if (subject.empty()) return;
 
     std::vector<std::string> students = portal_.studentsIn(subject);
     if (students.empty()) throw PortalError("No students are registered for " + subject + " yet.");
-
     std::map<std::string, int> current;
     for (const Mark& m : portal_.marksIn(subject)) current[m.student] = m.mark;
+
     std::cout << "\n";
+    std::vector<std::vector<std::string>> rows;
     for (std::size_t i = 0; i < students.size(); ++i) {
         auto it = current.find(students[i]);
-        std::cout << "  " << pad(std::to_string(i + 1) + ".", 4) << pad(students[i], 20)
-                  << (it == current.end() ? "no mark yet" : std::to_string(it->second) + "/100") << "\n";
+        rows.push_back({std::to_string(i + 1), students[i], it == current.end() ? c::dim("-") : std::to_string(it->second)});
     }
+    c::table({{"#", 3, true}, {"Student", 24}, {"Mark", 5, true}}, rows);
     std::cout << "\n";
-    int choice = c::readInt("Student (0 to cancel): ", 0, static_cast<int>(students.size()));
+    int choice = c::readInt("Student number (0 to cancel): ", 0, static_cast<int>(students.size()));
     if (choice == 0) return;
 
     const std::string& student = students[choice - 1];
@@ -253,61 +306,90 @@ void FacultyDashboard::giveMarks() {
                               std::to_string(Portal::kMaxMark) + "): ",
                           Portal::kMinMark, Portal::kMaxMark);
     portal_.setMark(user_, subject, student, mark);
-    c::success("Saved: " + student + " got " + std::to_string(mark) + "/100 in " + subject + ".");
+    std::cout << "\n";
+    c::ok("Saved: " + student + " got " + std::to_string(mark) + " in " + subject + ".");
 }
 
 void FacultyDashboard::classReport() {
-    c::heading("Class report");
+    c::section("Class report");
     std::vector<Subject> subjects = portal_.subjectsTaughtBy(user_);
     if (subjects.empty()) throw PortalError("Add a subject first.");
-    std::string subject = pickSubject(subjects, "Subject");
+    std::string subject = pickSubject(subjects);
     if (subject.empty()) return;
 
     std::vector<std::string> students = portal_.studentsIn(subject);
+    std::cout << "\n";
     if (students.empty()) {
-        std::cout << "  No students are registered for " << subject << " yet.\n";
+        c::hint("No students are registered for " + subject + " yet.");
         return;
     }
     std::map<std::string, int> marks;
     for (const Mark& m : portal_.marksIn(subject)) marks[m.student] = m.mark;
-    std::map<std::string, std::pair<int, int>> attendance;
-    for (const AttendanceRecord& r : portal_.attendanceRecords(subject)) {
-        auto& [here, total] = attendance[r.student];
-        ++total;
-        if (r.present) ++here;
-    }
 
-    std::cout << "\n  " << pad("Student", 20) << pad("Attendance", 20) << "Mark\n";
+    std::vector<std::vector<std::string>> rows;
+    int allHere = 0, allTotal = 0, markSum = 0, marked = 0, low = 0;
     for (const std::string& s : students) {
-        auto [here, total] = attendance[s];
-        std::string att = total ? std::to_string(here) + "/" + std::to_string(total) + " (" + percent(here, total) + ")" : "-";
+        std::vector<AttendanceRecord> history = portal_.attendanceHistory(s, subject);
+        int here = 0;
+        for (const AttendanceRecord& r : history) here += r.present ? 1 : 0;
+        int total = static_cast<int>(history.size());
+        allHere += here;
+        allTotal += total;
+        if (total && percent(here, total) < Portal::kMinAttendancePercent) ++low;
         auto it = marks.find(s);
-        std::cout << "  " << pad(s, 20) << pad(att, 20) << (it == marks.end() ? "-" : std::to_string(it->second)) << "\n";
+        if (it != marks.end()) {
+            markSum += it->second;
+            ++marked;
+        }
+        rows.push_back({s, std::to_string(here) + " / " + std::to_string(total), rate(here, total),
+                        it == marks.end() ? c::dim("-") : std::to_string(it->second), lastClasses(history)});
+    }
+    std::string average = marked ? std::to_string((markSum * 10 / marked + 5) / 10) : "-";
+    c::table({{"Student", 18}, {"Classes", 8, true}, {"Rate", 5, true}, {"Mark", 5, true}, {"  Last 7 classes", 16}}, rows,
+             {"Class", std::to_string(allHere) + " / " + std::to_string(allTotal), rate(allHere, allTotal), average, ""});
+    if (low) {
+        std::cout << "\n";
+        c::warn(std::to_string(low) + (low == 1 ? " student is" : " students are") + " below the " +
+                std::to_string(Portal::kMinAttendancePercent) + "% attendance requirement.");
     }
 }
 
 // ---------------------------------------------------------------- student
 
-std::string StudentDashboard::title() const { return "STUDENT PORTAL"; }
-
-std::vector<std::string> StudentDashboard::options() const {
-    return {"Register for a subject", "My subjects", "My marks", "My attendance", "Change my password", "Log out"};
+std::vector<c::Tab> StudentDashboard::tabs() const {
+    return {{1, "Subjects"}, {2, "Register"}, {3, "Marks"}, {4, "Attendance"}, {5, "Account"}, {0, "Log out"}};
 }
 
-bool StudentDashboard::handle(int choice) {
-    switch (choice) {
-        case 1: registerSubject(); break;
-        case 2: listSubjects(); break;
-        case 3: viewMarks(); break;
-        case 4: viewAttendance(); break;
-        case 5: changePassword(); break;
-        default: return false;
+void StudentDashboard::show(int tab) {
+    switch (tab) {
+        case 1: mySubjects(); break;
+        case 2: registerSubject(); break;
+        case 3: myMarks(); break;
+        case 4: myAttendance(); break;
+        default: account(); break;
     }
-    return true;
+}
+
+void StudentDashboard::mySubjects() {
+    c::section("My subjects");
+    std::vector<std::string> mine = portal_.enrolledSubjects(user_.username());
+    if (mine.empty()) {
+        c::hint("You haven't registered for any subjects yet. Use tab 2 to register.");
+        return;
+    }
+    std::vector<std::vector<std::string>> rows;
+    int total = 0;
+    for (const std::string& name : mine) {
+        std::optional<Subject> s = portal_.findSubject(name);
+        int hours = s ? s->creditHours : 0;
+        total += hours;
+        rows.push_back({name, credits(hours), s ? s->faculty : "-"});
+    }
+    c::table({{"Subject", 30}, {"Credits", 7, true}, {"  Teacher", 20}}, rows, {"Total", std::to_string(total), ""});
 }
 
 void StudentDashboard::registerSubject() {
-    c::heading("Register for a subject");
+    c::section("Register for a subject");
     std::vector<std::string> mine = portal_.enrolledSubjects(user_.username());
     std::vector<Subject> open;
     for (const Subject& s : portal_.subjects()) {
@@ -316,66 +398,73 @@ void StudentDashboard::registerSubject() {
         if (!taken) open.push_back(s);
     }
     if (open.empty()) {
-        std::cout << "  There are no new subjects to register for.\n";
+        c::hint("There are no new subjects to register for.");
         return;
     }
+    std::vector<std::vector<std::string>> rows;
     for (std::size_t i = 0; i < open.size(); ++i) {
-        std::cout << "  " << pad(std::to_string(i + 1) + ".", 4) << pad(open[i].name, 28)
-                  << open[i].creditHours << " credit hours, taught by " << open[i].faculty << "\n";
+        rows.push_back({std::to_string(i + 1), open[i].name, credits(open[i].creditHours), open[i].faculty});
     }
+    c::table({{"#", 3, true}, {"Subject", 30}, {"Credits", 7, true}, {"  Teacher", 18}}, rows);
     std::cout << "\n";
-    int choice = c::readInt("Subject (0 to cancel): ", 0, static_cast<int>(open.size()));
+    int choice = c::readInt("Subject number (0 to cancel): ", 0, static_cast<int>(open.size()));
     if (choice == 0) return;
     portal_.enroll(user_, open[choice - 1].name);
-    c::success("You are registered for " + open[choice - 1].name + ".");
+    std::cout << "\n";
+    c::ok("You are registered for " + open[choice - 1].name + ".");
 }
 
-void StudentDashboard::listSubjects() {
-    c::heading("My subjects");
+void StudentDashboard::myMarks() {
+    c::section("Marks");
     std::vector<std::string> mine = portal_.enrolledSubjects(user_.username());
     if (mine.empty()) {
-        std::cout << "  You haven't registered for any subjects yet.\n";
+        c::hint("You haven't registered for any subjects yet.");
         return;
     }
-    int credits = 0;
-    for (const std::string& name : mine) {
-        std::optional<Subject> s = portal_.findSubject(name);
-        int hours = s ? s->creditHours : 0;
-        credits += hours;
-        std::cout << "  " << pad(name, 28) << hours << " credit hours, taught by " << (s ? s->faculty : "-") << "\n";
-    }
-    std::cout << "\n  Total: " << credits << " credit hours\n";
-}
-
-void StudentDashboard::viewMarks() {
-    c::heading("My marks");
     std::map<std::string, int> marks;
     for (const Mark& m : portal_.marksFor(user_.username())) marks[m.subject] = m.mark;
-    std::vector<std::string> mine = portal_.enrolledSubjects(user_.username());
-    if (mine.empty()) {
-        std::cout << "  You haven't registered for any subjects yet.\n";
-        return;
-    }
+    std::vector<std::vector<std::string>> rows;
+    int sum = 0, count = 0;
     for (const std::string& subject : mine) {
+        std::optional<Subject> s = portal_.findSubject(subject);
         auto it = marks.find(subject);
-        std::cout << "  " << pad(subject, 28) << (it == marks.end() ? "not marked yet" : std::to_string(it->second) + "/100") << "\n";
+        if (it != marks.end()) {
+            sum += it->second;
+            ++count;
+        }
+        rows.push_back({subject, credits(s ? s->creditHours : 0),
+                        it == marks.end() ? c::dim("not marked") : std::to_string(it->second) + " / 100"});
     }
+    std::string average = count ? std::to_string((sum * 10 / count + 5) / 10) + " / 100" : "-";
+    c::table({{"Subject", 30}, {"Credits", 7, true}, {"Mark", 12, true}}, rows, {"Average", "", average});
 }
 
-void StudentDashboard::viewAttendance() {
-    c::heading("My attendance");
-    std::vector<AttendanceSummary> list = portal_.attendanceFor(user_.username());
-    if (list.empty()) {
-        std::cout << "  You haven't registered for any subjects yet.\n";
+void StudentDashboard::myAttendance() {
+    c::section("Attendance");
+    std::vector<std::string> mine = portal_.enrolledSubjects(user_.username());
+    if (mine.empty()) {
+        c::hint("You haven't registered for any subjects yet.");
         return;
     }
-    for (const AttendanceSummary& a : list) {
-        std::cout << "  " << pad(a.subject, 28);
-        if (a.total == 0) {
-            std::cout << "no classes yet\n";
-        } else {
-            std::cout << a.attended << " of " << a.total << " classes (" << percent(a.attended, a.total) << ")\n";
-        }
+    std::vector<std::vector<std::string>> rows;
+    std::vector<std::string> low;
+    int allHere = 0, allTotal = 0;
+    for (const std::string& subject : mine) {
+        std::vector<AttendanceRecord> history = portal_.attendanceHistory(user_.username(), subject);
+        int here = 0;
+        for (const AttendanceRecord& r : history) here += r.present ? 1 : 0;
+        int total = static_cast<int>(history.size());
+        allHere += here;
+        allTotal += total;
+        if (total && percent(here, total) < Portal::kMinAttendancePercent) low.push_back(subject);
+        rows.push_back({subject, total ? std::to_string(here) + " / " + std::to_string(total) : c::dim("no classes"),
+                        rate(here, total), lastClasses(history)});
+    }
+    c::table({{"Subject", 26}, {"Classes", 10, true}, {"Rate", 5, true}, {"  Last 7 classes", 16}}, rows,
+             {"Overall", allTotal ? std::to_string(allHere) + " / " + std::to_string(allTotal) : "-", rate(allHere, allTotal), ""});
+    if (!low.empty()) std::cout << "\n";
+    for (const std::string& subject : low) {
+        c::warn(subject + " is below the " + std::to_string(Portal::kMinAttendancePercent) + "% attendance requirement.");
     }
 }
 
@@ -384,110 +473,120 @@ void StudentDashboard::viewAttendance() {
 int App::run() {
     try {
         if (portal_.needsSetup()) setup();
+        const std::vector<c::Tab> portals = {{1, "Admin"}, {2, "Faculty"}, {3, "Student"}, {0, "Exit"}};
         while (true) {
             c::clear();
-            c::title("CMS PORTAL");
-            int choice = c::menu({"Admin portal", "Faculty portal", "Student portal", "Exit"});
-            if (choice == 4) break;
+            c::header("Welcome", portal_.term());
+            c::tabs(portals, -1);
+            c::section("Sign in");
+            c::hint("Open your portal to log in, or register if you are new.");
+            int choice = c::chooseTab(portals, "Choose a portal");
+            if (choice == 0) break;
             portalScreen(choice == 1 ? Role::Admin : choice == 2 ? Role::Faculty : Role::Student);
         }
     } catch (const c::InputClosed&) {
         std::cout << "\n";
     }
-    std::cout << "\n  Goodbye.\n";
+    std::cout << "\n  Goodbye.\n\n";
     return 0;
 }
 
 void App::setup() {
     c::clear();
-    c::title("FIRST RUN SETUP");
-    c::box({"There is no admin account yet.", "Create one now. It is the only account that",
-            "can look up users and reset passwords."});
+    c::header("First run setup", portal_.term());
+    c::section("Create the admin account");
+    c::hint("There is no admin account yet. The admin can look up users and reset passwords.");
     std::cout << "\n";
     while (portal_.needsSetup()) {
         try {
             std::string name = c::readLine("Admin username: ");
-            c::info(passwordRules());
+            c::hint(passwordRules());
             std::string password = c::readPassword("Admin password: ");
             if (c::readPassword("Repeat password: ") != password) throw PortalError("The passwords don't match.");
             portal_.createFirstAdmin(name, password);
-            c::success("Admin account created.");
-            c::pause();
         } catch (const PortalError& e) {
-            c::error(e.what());
+            c::fail(e.what());
+            std::cout << "\n";
         }
     }
 }
 
 void App::portalScreen(Role role) {
+    std::vector<c::Tab> items = {{1, "Log in"}};
+    if (role != Role::Admin) items.push_back({2, "Register"});  // admin accounts can't be self-registered
+    items.push_back({3, "Forgot password"});
+    items.push_back({0, "Back"});
+
+    int active = -1;
     while (true) {
         c::clear();
-        c::title(portalTitle(role));
-        // Admin accounts can't be self-registered, so admins get no Register option.
-        static const std::vector<std::string> adminOptions = {"Log in", "Forgot password", "Back"};
-        static const std::vector<std::string> userOptions = {"Log in", "Register", "Forgot password", "Back"};
-        const std::vector<std::string>& options = role == Role::Admin ? adminOptions : userOptions;
-        const std::string& picked = options[c::menu(options) - 1];
-
-        if (picked == "Back") return;
+        c::header(titleCase(roleName(role)) + " portal", portal_.term());
+        c::tabs(items, active);
         try {
-            if (picked == "Log in") {
-                login(role);
-                continue;  // the dashboard already paused where needed
+            if (active == 1 && login(role)) {
+                active = -1;  // signed out: show the portal screen fresh
+                continue;
             }
-            if (picked == "Register") registerAccount(role);
-            if (picked == "Forgot password") forgotPassword();
+            if (active == 2) registerAccount(role);
+            if (active == 3) forgotPassword();
+            if (active == -1) {
+                c::section(titleCase(roleName(role)) + " portal");
+                c::hint(role == Role::Admin ? "Log in with the admin account." : "Log in, or register if you are new.");
+            }
         } catch (const PortalError& e) {
-            c::error(e.what());
+            c::fail(e.what());
         }
-        c::pause();
+        int next = c::chooseTab(items);
+        if (next == 0) return;
+        active = next;
     }
 }
 
-void App::login(Role role) {
-    c::heading("Log in");
+bool App::login(Role role) {
+    c::section("Log in");
     std::string name = c::readLine("Username: ");
     std::string password = c::readPassword("Password: ");
     LoginResult result = portal_.login(role, name, password);
 
     if (result.status == LoginStatus::Locked) {
         std::int64_t minutes = (result.secondsLocked + 59) / 60;
-        c::error("Too many wrong passwords. Try again in " + std::to_string(minutes) +
-                 (minutes == 1 ? " minute." : " minutes."));
-        c::pause();
-        return;
+        std::cout << "\n";
+        c::fail("Too many wrong passwords. Try again in " + std::to_string(minutes) +
+                (minutes == 1 ? " minute." : " minutes."));
+        return false;
     }
     if (result.status != LoginStatus::Ok) {
-        c::error("Wrong username or password.");
-        c::pause();
-        return;
+        std::cout << "\n";
+        c::fail("Wrong username or password.");
+        return false;
     }
-
     switch (role) {
         case Role::Admin: AdminDashboard(portal_, *result.user).run(); break;
         case Role::Faculty: FacultyDashboard(portal_, *result.user).run(); break;
         case Role::Student: StudentDashboard(portal_, *result.user).run(); break;
     }
+    return true;
 }
 
 void App::registerAccount(Role role) {
-    c::heading("Register");
-    c::info("Username: 3 to 32 letters, digits, '.', '_' or '-'.");
+    c::section("Register");
+    c::hint("Username: 3 to 32 letters, digits, '.', '_' or '-'.");
     std::string name = c::readLine("Username: ");
-    Portal::checkUsername(name);
-    c::info(passwordRules());
+    Portal::checkUsername(Portal::normalizeUsername(name));
+    c::hint(passwordRules());
     std::string password = c::readPassword("Password: ");
     if (c::readPassword("Repeat password: ") != password) throw PortalError("The passwords don't match.");
     portal_.registerUser(role, name, password);
-    c::success("Account created. You can log in now.");
+    std::cout << "\n";
+    c::ok("Account created. Choose 1 to log in.");
 }
 
 void App::forgotPassword() {
-    c::heading("Forgot password");
-    c::box({"Passwords are stored as salted one-way hashes, so",
-            "nobody can look yours up, not even the admin.", "",
-            "Ask the admin to reset it. They will give you a",
-            "new password, which you can change after logging in."});
+    c::section("Forgot password");
+    std::cout << "  Passwords are stored as salted one-way hashes, so nobody can look\n"
+                 "  yours up, not even the admin.\n\n"
+                 "  Ask the admin to reset it. They will give you a new password, which\n"
+                 "  you can change in the Account tab after logging in.\n";
 }
 
 }  // namespace cms

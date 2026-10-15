@@ -3,12 +3,14 @@
 #include <string>
 #include <vector>
 
+#include "cms/console.h"
 #include "cms/portal.h"
 
 namespace cms {
 
-// What a signed-in user sees. Each role has its own dashboard with its own
-// options; the shared loop lives in run().
+// What a signed-in user sees: the campus card, a row of tabs and the page
+// for the active tab. Each role has its own tabs and pages; the shared loop
+// lives in run().
 class Dashboard {
 public:
     Dashboard(Portal& portal, const User& user) : portal_(portal), user_(user) {}
@@ -17,14 +19,13 @@ public:
     void run();
 
 protected:
-    virtual std::string title() const = 0;
-    virtual std::vector<std::string> options() const = 0;
-    // Handles one choice. Returns false when the user logs out.
-    virtual bool handle(int choice) = 0;
+    virtual std::vector<console::Tab> tabs() const = 0;  // includes {0, "Log out"}
+    // Draws the page for a tab. A form page asks its questions right here.
+    virtual void show(int tab) = 0;
 
-    void changePassword();
+    void account();
     // Lets the user pick a subject from a numbered list. Empty if cancelled.
-    std::string pickSubject(const std::vector<Subject>& subjects, const std::string& prompt);
+    std::string pickSubject(const std::vector<Subject>& subjects);
 
     Portal& portal_;
     const User& user_;
@@ -35,13 +36,13 @@ public:
     using Dashboard::Dashboard;
 
 protected:
-    std::string title() const override;
-    std::vector<std::string> options() const override;
-    bool handle(int choice) override;
+    std::vector<console::Tab> tabs() const override;
+    void show(int tab) override;
 
 private:
-    void findAccount(Role role);
-    void listAccounts();
+    void facultyList();
+    void studentList();
+    void findAccount();
     void resetPassword();
 };
 
@@ -50,13 +51,12 @@ public:
     using Dashboard::Dashboard;
 
 protected:
-    std::string title() const override;
-    std::vector<std::string> options() const override;
-    bool handle(int choice) override;
+    std::vector<console::Tab> tabs() const override;
+    void show(int tab) override;
 
 private:
+    void mySubjects();
     void addSubject();
-    void listSubjects();
     void markAttendance();
     void giveMarks();
     void classReport();
@@ -67,18 +67,17 @@ public:
     using Dashboard::Dashboard;
 
 protected:
-    std::string title() const override;
-    std::vector<std::string> options() const override;
-    bool handle(int choice) override;
+    std::vector<console::Tab> tabs() const override;
+    void show(int tab) override;
 
 private:
+    void mySubjects();
     void registerSubject();
-    void listSubjects();
-    void viewMarks();
-    void viewAttendance();
+    void myMarks();
+    void myAttendance();
 };
 
-// The home screen, the three portal screens and first-run setup.
+// The welcome screen, the three portal sign-in screens and first-run setup.
 class App {
 public:
     explicit App(Portal& portal) : portal_(portal) {}
@@ -87,7 +86,7 @@ public:
 private:
     void setup();
     void portalScreen(Role role);
-    void login(Role role);
+    bool login(Role role);  // true after the user has signed in and out again
     void registerAccount(Role role);
     void forgotPassword();
 

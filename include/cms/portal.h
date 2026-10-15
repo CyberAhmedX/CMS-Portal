@@ -126,6 +126,7 @@ public:
     static constexpr int kMaxMark = 100;
     static constexpr int kMinCredits = 1;
     static constexpr int kMaxCredits = 6;
+    static constexpr int kMinAttendancePercent = 75;  // below this, a subject gets a warning
 
     explicit Portal(Options options);
 
@@ -159,6 +160,8 @@ public:
                           const std::map<std::string, bool>& present);
     std::vector<AttendanceSummary> attendanceFor(const std::string& student) const;
     std::vector<AttendanceRecord> attendanceRecords(const std::string& subject) const;
+    // One student's classes in one subject, oldest first.
+    std::vector<AttendanceRecord> attendanceHistory(const std::string& student, const std::string& subject) const;
 
     // Marks
     void setMark(const User& faculty, const std::string& subject, const std::string& student, int mark);
@@ -166,6 +169,7 @@ public:
     std::vector<Mark> marksIn(const std::string& subject) const;
 
     std::string today() const;
+    std::string term() const;  // "Spring 2026", "Summer 2026" or "Fall 2026"
 
     // Input rules, shared with the menus so they can explain them up front.
     static std::string normalizeUsername(const std::string& username);

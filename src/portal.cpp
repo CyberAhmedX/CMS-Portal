@@ -190,6 +190,13 @@ std::string Portal::today() const {
     return buffer;
 }
 
+std::string Portal::term() const {
+    std::string date = today();
+    int month = std::stoi(date.substr(5, 2));
+    const char* season = month <= 5 ? "Spring" : month <= 7 ? "Summer" : "Fall";
+    return std::string(season) + " " + date.substr(0, 4);
+}
+
 bool Portal::needsSetup() const {
     return std::none_of(users_.begin(), users_.end(),
                         [](const auto& u) { return u->role() == Role::Admin; });
@@ -435,6 +442,14 @@ std::vector<AttendanceRecord> Portal::attendanceRecords(const std::string& subje
         return a.date != b.date ? a.date < b.date : a.student < b.student;
     });
     return out;
+}
+
+std::vector<AttendanceRecord> Portal::attendanceHistory(const std::string& student, const std::string& subject) const {
+    std::vector<AttendanceRecord> out;
+    for (const AttendanceRecord& r : attendanceRecords(subject)) {
+        if (r.student == student) out.push_back(r);
+    }
+    return out;  // attendanceRecords() is already sorted by date
 }
 
 // ---------------------------------------------------------------- marks

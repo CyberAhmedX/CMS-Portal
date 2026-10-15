@@ -355,3 +355,26 @@ TEST("password hash encoding round trip and bad input") {
     CHECK(!PasswordHash::decode("pbkdf2-sha256$10$zz$00").has_value());
     CHECK(!PasswordHash::decode("pbkdf2-sha256$10$00").has_value());
 }
+
+TEST("attendance history is per student and in date order") {
+    Classroom f("history");
+    const User& teacher = f.signIn(Role::Faculty, "teacher");
+    f.portal->recordAttendance(teacher, "Data Structures", "2026-03-02", {{"alice", false}, {"bob", true}});
+    f.portal->recordAttendance(teacher, "Data Structures", "2026-02-27", {{"alice", true}, {"bob", true}});
+    std::vector<AttendanceRecord> alice = f.portal->attendanceHistory("alice", "Data Structures");
+    CHECK_EQ(alice.size(), std::size_t(2));
+    CHECK_EQ(alice[0].date, std::string("2026-02-27"));
+    CHECK(alice[0].present);
+    CHECK(!alice[1].present);
+    CHECK(f.portal->attendanceHistory("carol", "Data Structures").empty());
+}
+
+TEST("term name follows the month") {
+    Fixture f("term");
+    f.time = 1772452800;  // 2 Mar 2026
+    CHECK_EQ(f.portal->term(), std::string("Spring 2026"));
+    f.time = 1782907200;  // 1 Jul 2026
+    CHECK_EQ(f.portal->term(), std::string("Summer 2026"));
+    f.time = 1791720000;  // 11 Oct 2026
+    CHECK_EQ(f.portal->term(), std::string("Fall 2026"));
+}
