@@ -378,3 +378,76 @@ TEST("term name follows the month") {
     f.time = 1791720000;  // 11 Oct 2026
     CHECK_EQ(f.portal->term(), std::string("Fall 2026"));
 }
+
+// ---------------------------------------------------------------- attendance requirement
+
+TEST("attendance percent rounds half up and handles no classes") {
+    CHECK_EQ(attendancePercent(5, 7), 71);
+    CHECK_EQ(attendancePercent(6, 7), 86);
+    CHECK_EQ(attendancePercent(1, 8), 13);  // 12.5 rounds up
+    CHECK_EQ(attendancePercent(0, 0), 0);
+}
+
+TEST("exam eligibility follows the attendance requirement") {
+    Classroom f("eligible");
+    const User& teacher = f.signIn(Role::Faculty, "teacher");
+    // alice: 3 of 4 (75%), bob: 2 of 4 (50%)
+    const char* dates[] = {"2026-02-23", "2026-02-24", "2026-02-25", "2026-02-26"};
+    for (int i = 0; i < 4; ++i) {
+        f.portal->recordAttendance(teacher, "Data Structures", dates[i], {{"alice", i != 0}, {"bob", i < 2}});
+    }
+    CHECK_EQ(f.portal->minAttendance(), 75);
+    CHECK(f.portal->isEligible("alice", "Data Structures"));
+    CHECK(!f.portal->isEligible("bob", "data structures"));
+    CHECK(f.portal->isEligible("carol", "Data Structures"));  // no classes recorded: nothing to hold against
+
+    std::vector<AttendanceShortage> list = f.portal->shortages();
+    CHECK_EQ(list.size(), std::size_t(1));
+    CHECK_EQ(list[0].student, std::string("bob"));
+    CHECK_EQ(list[0].attended, 2);
+    CHECK_EQ(list[0].total, 4);
+}
+
+TEST("a subject with no classes yet has no shortage") {
+    Classroom f("no_classes");
+    CHECK(f.portal->shortages().empty());
+    CHECK(f.portal->isEligible("alice", "Data Structures"));
+}
+
+TEST("only the admin sets the requirement, within 50 to 100, and it is saved") {
+    Classroom f("requirement");
+    const User& teacher = f.signIn(Role::Faculty, "teacher");
+    f.portal->recordAttendance(teacher, "Data Structures", "2026-02-23", {{"alice", true}, {"bob", false}});
+    f.portal->recordAttendance(teacher, "Data Structures", "2026-02-24", {{"alice", false}, {"bob", false}});
+    f.portal->recordAttendance(teacher, "Data Structures", "2026-02-25", {{"alice", true}, {"bob", true}});
+    // alice 67%, bob 33%
+
+    CHECK_THROWS(PortalError, f.portal->setMinAttendance(teacher, 60));
+    const User& admin = f.signIn(Role::Admin, "admin", "admin-password");
+    CHECK_THROWS(PortalError, f.portal->setMinAttendance(admin, 49));
+    CHECK_THROWS(PortalError, f.portal->setMinAttendance(admin, 101));
+    CHECK_EQ(f.portal->shortages().size(), std::size_t(2));
+
+    f.portal->setMinAttendance(admin, 60);
+    CHECK(f.portal->isEligible("alice", "Data Structures"));
+    CHECK_EQ(f.portal->shortages().size(), std::size_t(1));
+
+    f.reopen();
+    CHECK_EQ(f.portal->minAttendance(), 60);
+}
+
+TEST("shortages are listed lowest attendance first") {
+    Classroom f("shortage_order");
+    f.portal->registerUser(Role::Student, "carol", "correct-horse");
+    f.portal->enroll(f.signIn(Role::Student, "carol"), "Data Structures");
+    const User& teacher = f.signIn(Role::Faculty, "teacher");
+    // alice 2/4 = 50%, bob 0/4 = 0%, carol 4/4
+    const char* dates[] = {"2026-02-23", "2026-02-24", "2026-02-25", "2026-02-26"};
+    for (int i = 0; i < 4; ++i) {
+        f.portal->recordAttendance(teacher, "Data Structures", dates[i], {{"alice", i % 2 == 0}, {"bob", false}, {"carol", true}});
+    }
+    std::vector<AttendanceShortage> list = f.portal->shortages();
+    CHECK_EQ(list.size(), std::size_t(2));
+    CHECK_EQ(list[0].student, std::string("bob"));
+    CHECK_EQ(list[1].student, std::string("alice"));
+}

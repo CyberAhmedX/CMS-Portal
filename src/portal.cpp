@@ -46,6 +46,10 @@ std::optional<int> parseInt(const std::string& text) {
 
 }  // namespace
 
+int attendancePercent(int attended, int total) {
+    return total <= 0 ? 0 : (attended * 100 + total / 2) / total;
+}
+
 std::string roleName(Role role) {
     switch (role) {
         case Role::Admin: return "admin";
@@ -444,6 +448,45 @@ std::vector<AttendanceRecord> Portal::attendanceRecords(const std::string& subje
     return out;
 }
 
+void Portal::setMinAttendance(const User& admin, int percent) {
+    requireRole(admin, Role::Admin);
+    if (percent < kLowestMinAttendance || percent > kHighestMinAttendance) {
+        throw PortalError("The attendance requirement must be " + std::to_string(kLowestMinAttendance) + "% to " +
+                          std::to_string(kHighestMinAttendance) + "%.");
+    }
+    minAttendance_ = percent;
+    saveSettings();
+}
+
+bool Portal::isEligible(const std::string& student, const std::string& subject) const {
+    int attended = 0, total = 0;
+    for (const AttendanceRecord& r : attendance_) {
+        if (r.student != student || !sameName(r.subject, subject)) continue;
+        ++total;
+        if (r.present) ++attended;
+    }
+    return total == 0 || attendancePercent(attended, total) >= minAttendance_;
+}
+
+std::vector<AttendanceShortage> Portal::shortages() const {
+    std::vector<AttendanceShortage> out;
+    for (const auto& [student, subject] : enrollments_) {
+        int attended = 0, total = 0;
+        for (const AttendanceRecord& r : attendance_) {
+            if (r.student != student || r.subject != subject) continue;
+            ++total;
+            if (r.present) ++attended;
+        }
+        if (total && attendancePercent(attended, total) < minAttendance_) out.push_back({student, subject, attended, total});
+    }
+    std::sort(out.begin(), out.end(), [](const AttendanceShortage& a, const AttendanceShortage& b) {
+        int pa = attendancePercent(a.attended, a.total), pb = attendancePercent(b.attended, b.total);
+        if (pa != pb) return pa < pb;
+        return a.student != b.student ? a.student < b.student : a.subject < b.subject;
+    });
+    return out;
+}
+
 std::vector<AttendanceRecord> Portal::attendanceHistory(const std::string& student, const std::string& subject) const {
     std::vector<AttendanceRecord> out;
     for (const AttendanceRecord& r : attendanceRecords(subject)) {
@@ -525,6 +568,11 @@ void Portal::load() {
         std::optional<int> mark = row.size() == 3 ? parseInt(row[2]) : std::nullopt;
         if (mark) marks_.push_back({row[0], row[1], *mark});
     }
+    for (const auto& row : storage::readTable(dir / "settings.tsv")) {
+        if (row.size() != 2 || row[0] != "min_attendance") continue;
+        std::optional<int> value = parseInt(row[1]);
+        if (value && *value >= kLowestMinAttendance && *value <= kHighestMinAttendance) minAttendance_ = *value;
+    }
 }
 
 void Portal::saveUsers() const {
@@ -552,6 +600,10 @@ void Portal::saveAttendance() const {
     std::vector<storage::Row> rows;
     for (const AttendanceRecord& r : attendance_) rows.push_back({r.date, r.subject, r.student, r.present ? "P" : "A"});
     storage::writeTable(options_.dataDir / "attendance.tsv", rows);
+}
+
+void Portal::saveSettings() const {
+    storage::writeTable(options_.dataDir / "settings.tsv", {{"min_attendance", std::to_string(minAttendance_)}});
 }
 
 void Portal::saveMarks() const {

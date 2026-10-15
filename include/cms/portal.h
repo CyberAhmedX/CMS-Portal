@@ -102,6 +102,17 @@ struct AttendanceSummary {
     int total = 0;
 };
 
+// One student in one subject whose attendance is below the requirement.
+struct AttendanceShortage {
+    std::string student;
+    std::string subject;
+    int attended = 0;
+    int total = 0;
+};
+
+// Attendance as a whole-number percent, rounded half up. 0 when there were no classes.
+int attendancePercent(int attended, int total);
+
 enum class LoginStatus { Ok, WrongCredentials, Locked };
 
 struct LoginResult {
@@ -126,7 +137,11 @@ public:
     static constexpr int kMaxMark = 100;
     static constexpr int kMinCredits = 1;
     static constexpr int kMaxCredits = 6;
-    static constexpr int kMinAttendancePercent = 75;  // below this, a subject gets a warning
+    // Attendance requirement for sitting a subject's exam. The admin can
+    // change it within these bounds; 75% is the usual university rule.
+    static constexpr int kDefaultMinAttendance = 75;
+    static constexpr int kLowestMinAttendance = 50;
+    static constexpr int kHighestMinAttendance = 100;
 
     explicit Portal(Options options);
 
@@ -159,6 +174,15 @@ public:
     void recordAttendance(const User& faculty, const std::string& subject, const std::string& date,
                           const std::map<std::string, bool>& present);
     std::vector<AttendanceSummary> attendanceFor(const std::string& student) const;
+
+    // Attendance requirement and exam eligibility
+    int minAttendance() const { return minAttendance_; }
+    void setMinAttendance(const User& admin, int percent);
+    // A student may sit a subject's exam unless classes were held and their
+    // attendance is below the requirement.
+    bool isEligible(const std::string& student, const std::string& subject) const;
+    // Every student and subject below the requirement, lowest attendance first.
+    std::vector<AttendanceShortage> shortages() const;
     std::vector<AttendanceRecord> attendanceRecords(const std::string& subject) const;
     // One student's classes in one subject, oldest first.
     std::vector<AttendanceRecord> attendanceHistory(const std::string& student, const std::string& subject) const;
@@ -190,6 +214,7 @@ private:
     void saveEnrollments() const;
     void saveAttendance() const;
     void saveMarks() const;
+    void saveSettings() const;
 
     Options options_;
     std::vector<std::unique_ptr<User>> users_;
@@ -197,6 +222,7 @@ private:
     std::vector<std::pair<std::string, std::string>> enrollments_;  // student, subject
     std::vector<AttendanceRecord> attendance_;
     std::vector<Mark> marks_;
+    int minAttendance_ = kDefaultMinAttendance;
     std::optional<PasswordHash> dummy_;  // checked against unknown usernames, see login()
 };
 

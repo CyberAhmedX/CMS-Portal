@@ -22,8 +22,11 @@ protected:
     virtual std::vector<console::Tab> tabs() const = 0;  // includes {0, "Log out"}
     // Draws the page for a tab. A form page asks its questions right here.
     virtual void show(int tab) = 0;
+    // Warnings shown once, right after logging in.
+    virtual std::vector<std::string> alerts() const { return {}; }
 
     void account();
+    void changePassword();
     // Lets the user pick a subject from a numbered list. Empty if cancelled.
     std::string pickSubject(const std::vector<Subject>& subjects);
 
@@ -38,12 +41,15 @@ public:
 protected:
     std::vector<console::Tab> tabs() const override;
     void show(int tab) override;
+    std::vector<std::string> alerts() const override;
 
 private:
     void facultyList();
     void studentList();
+    void atRisk();
     void findAccount();
     void resetPassword();
+    void settings();
 };
 
 class FacultyDashboard final : public Dashboard {
@@ -53,6 +59,7 @@ public:
 protected:
     std::vector<console::Tab> tabs() const override;
     void show(int tab) override;
+    std::vector<std::string> alerts() const override;
 
 private:
     void mySubjects();
@@ -69,6 +76,7 @@ public:
 protected:
     std::vector<console::Tab> tabs() const override;
     void show(int tab) override;
+    std::vector<std::string> alerts() const override;
 
 private:
     void mySubjects();

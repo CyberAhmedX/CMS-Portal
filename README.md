@@ -13,18 +13,25 @@ Every screen has the same layout: a campus card with your name and the current t
 - Look up a faculty member (and what they teach) or a student (and what they take)
 - Faculty list with subjects and student counts, and a student list with each student's overall attendance
 - Reset a forgotten password, which also unlocks a locked account
+- **At risk:** every student and subject below the attendance requirement, lowest first
+- **Settings:** set the attendance requirement, from 50% to 100% (75% by default)
 
 **Faculty portal**
 - Add subjects with credit hours
 - Mark attendance for a class on any past date, one P or A per registered student
 - Give marks from 0 to 100
-- Class report: each student's attendance, mark and last 7 classes, the class average, and who is below 75% attendance
+- Class report: each student's attendance, mark and last 7 classes, the class average, and whether each student can sit the exam
 
 **Student portal**
 - Register for subjects and see total credit hours
 - Marks per subject with an average
 - Attendance per subject, such as "5 / 6, 83%", with the last 7 classes as dots and an overall total
-- A warning for any subject below the 75% attendance requirement
+- Exam eligibility per subject: below the attendance requirement, a student can't sit that subject's exam
+
+**Attendance requirement**
+- Set by the admin, 75% by default. A subject with no classes held yet never counts against a student.
+- Below it, a student is "Not eligible" for that subject's exam, shown in red wherever their attendance appears.
+- Warnings appear right after logging in: students see their own subjects, faculty see how many of their students are at risk, and the admin sees the total.
 
 **Everyone**
 - Change your own password
@@ -84,7 +91,7 @@ On the first run it asks you to create the admin account. Accounts and records a
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-There are 37 tests:
+There are 42 tests:
 
 - The SHA-256, HMAC and PBKDF2 code is checked against the official test vectors (FIPS 180-4, RFC 4231, RFC 7914).
 - The file format is checked for round trips.
@@ -98,17 +105,25 @@ GitHub Actions builds the project and runs the tests on Windows, Linux and macOS
 
 ![Home screen](docs/screenshots/01-home.png)
 
+**A warning right after a student logs in**
+
+![Login warning](docs/screenshots/07-login-warning.png)
+
 **Faculty marking attendance**
 
 ![Marking attendance](docs/screenshots/02-mark-attendance.png)
 
-**Class report in the faculty portal**
+**Class report with exam eligibility**
 
 ![Class report](docs/screenshots/03-class-report.png)
 
-**Admin student list with overall attendance**
+**The admin's At risk list**
 
-![Student list](docs/screenshots/06-students.png)
+![At risk](docs/screenshots/06-at-risk.png)
+
+**Changing the attendance requirement**
+
+![Settings](docs/screenshots/08-settings.png)
 
 **Locked out after 5 wrong passwords**
 
@@ -116,7 +131,7 @@ GitHub Actions builds the project and runs the tests on Windows, Linux and macOS
 
 ## How data is stored
 
-Each table is a tab-separated text file in the `data` folder: `users.tsv`, `subjects.tsv`, `enrollments.tsv`, `attendance.tsv` and `marks.tsv`. Tabs, newlines and backslashes inside a value are escaped. A user line looks like this:
+Each table is a tab-separated text file in the `data` folder: `users.tsv`, `subjects.tsv`, `enrollments.tsv`, `attendance.tsv`, `marks.tsv` and `settings.tsv` (the attendance requirement). Tabs, newlines and backslashes inside a value are escaped. A user line looks like this:
 
 ```
 student	sara	pbkdf2-sha256$600000$<salt>$<hash>	0	0
