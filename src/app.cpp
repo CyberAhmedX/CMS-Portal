@@ -137,7 +137,7 @@ std::vector<std::string> AdminDashboard::alerts() const {
 
 void AdminDashboard::atRisk() {
     c::section("At risk");
-    c::hint("Below the " + std::to_string(portal_.minAttendance()) + "% attendance requirement, so they can't sit that exam.");
+    c::hint("Below the " + std::to_string(portal_.minAttendance()) + "% attendance requirement, so they can't sit for that exam.");
     std::cout << "\n";
     std::vector<AttendanceShortage> list = portal_.shortages();
     if (list.empty()) {
@@ -160,7 +160,7 @@ void AdminDashboard::settings() {
     std::cout << "\n";
     int choice = c::readInt("Setting to change (0 for none): ", 0, 2);
     if (choice == 1) {
-        c::hint("Students below this can't sit that subject's exam. Allowed: " +
+        c::hint("Students below this can't sit for the exam. Allowed: " +
                 std::to_string(Portal::kLowestMinAttendance) + "% to " + std::to_string(Portal::kHighestMinAttendance) + "%.");
         int value = c::readInt("New requirement in %: ", Portal::kLowestMinAttendance, Portal::kHighestMinAttendance);
         portal_.setMinAttendance(user_, value);
@@ -430,7 +430,7 @@ void FacultyDashboard::classReport() {
     if (low) {
         std::cout << "\n";
         c::warn(plural(static_cast<std::size_t>(low), "student is", "students are") + " below " +
-                std::to_string(portal_.minAttendance()) + "% attendance and can't sit the exam.");
+                std::to_string(portal_.minAttendance()) + "% attendance and can't sit for the exam.");
     }
 }
 
@@ -455,7 +455,7 @@ std::vector<std::string> StudentDashboard::alerts() const {
     for (const AttendanceShortage& s : portal_.shortages()) {
         if (s.student != user_.username()) continue;
         out.push_back("Warning: " + s.subject + " attendance is " + std::to_string(attendancePercent(s.attended, s.total)) +
-                      "%. You need " + std::to_string(portal_.minAttendance()) + "% to sit its exam.");
+                      "%. You need " + std::to_string(portal_.minAttendance()) + "% to sit for the exam.");
     }
     return out;
 }
@@ -546,15 +546,17 @@ void StudentDashboard::myAttendance() {
         int total = static_cast<int>(history.size());
         allHere += here;
         allTotal += total;
-        if (total && attendancePercent(here, total) < portal_.minAttendance()) low.push_back(subject);
+        if (total && attendancePercent(here, total) < portal_.minAttendance()) {
+            low.push_back(subject + " attendance is " + std::to_string(attendancePercent(here, total)) + "%.");
+        }
         rows.push_back({subject, total ? std::to_string(here) + " / " + std::to_string(total) : c::dim("none yet"),
                         rate(here, total, portal_.minAttendance()), lastClasses(history), exam(here, total, portal_.minAttendance())});
     }
     c::table({{"Subject", 22}, {"Classes", 8, true}, {"Rate", 5, true}, {"  Last 7", 9}, {"Exam", 12}}, rows,
              {"Overall", allTotal ? std::to_string(allHere) + " / " + std::to_string(allTotal) : "-", rate(allHere, allTotal, portal_.minAttendance()), "", ""});
     if (!low.empty()) std::cout << "\n";
-    for (const std::string& subject : low) {
-        c::warn(subject + " is below " + std::to_string(portal_.minAttendance()) + "%, so you can't sit its exam yet.");
+    for (const std::string& line : low) {
+        c::warn(line + " You need " + std::to_string(portal_.minAttendance()) + "% to sit for the exam.");
     }
 }
 

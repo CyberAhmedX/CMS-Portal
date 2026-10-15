@@ -20,17 +20,17 @@ Every screen has the same layout: a campus card with your name and the current t
 - Add subjects with credit hours
 - Mark attendance for a class on any past date, one P or A per registered student
 - Give marks from 0 to 100
-- Class report: each student's attendance, mark and last 7 classes, the class average, and whether each student can sit the exam
+- Class report: each student's attendance, mark and last 7 classes, the class average, and whether each student can sit for the exam
 
 **Student portal**
 - Register for subjects and see total credit hours
 - Marks per subject with an average
 - Attendance per subject, such as "5 / 6, 83%", with the last 7 classes as dots and an overall total
-- Exam eligibility per subject: below the attendance requirement, a student can't sit that subject's exam
+- Exam eligibility per subject: below the attendance requirement, a student can't sit for that subject's exam
 
 **Attendance requirement**
 - Set by the admin, 75% by default. A subject with no classes held yet never counts against a student.
-- Below it, a student is "Not eligible" for that subject's exam, shown in red wherever their attendance appears.
+- Below it, a student is "Not eligible" to sit for that subject's exam, shown in red wherever their attendance appears.
 - Warnings appear right after logging in: students see their own subjects, faculty see how many of their students are at risk, and the admin sees the total.
 
 **Everyone**
