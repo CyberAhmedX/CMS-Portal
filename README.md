@@ -4,7 +4,11 @@ A campus management system that runs in the terminal, written in C++17. It has t
 
 Every screen has the same layout: a campus card with your name and the current term, a row of numbered tabs, and the page for the tab you picked.
 
-![A student's attendance page](docs/screenshots/04-student-attendance.png)
+![A faculty member marks attendance, the class report shows who can no longer sit the exam, and the student sees a warning at login](docs/demo.gif)
+
+*A faculty member marks hamza absent, the class report shows he can no longer sit the exam, and hamza sees the warning when he logs in.*
+
+**Try it without compiling anything:** [download the latest release](https://github.com/CyberAhmedX/cms-portal/releases/latest) for Windows, macOS or Linux. It comes with sample data to explore.
 
 ## Features
 
@@ -65,6 +69,24 @@ This started as my university Object-Oriented Programming course project. Review
 
 Each of these has a regression test in [`tests/test_portal.cpp`](tests/test_portal.cpp).
 
+## Download and run
+
+Each [release](https://github.com/CyberAhmedX/cms-portal/releases/latest) has a ready-to-run download for Windows (64-bit), macOS (Apple silicon and Intel) and Linux (x64). Unzip it and start the demo:
+
+- **Windows:** double-click `try-demo.bat`
+- **macOS:** double-click `try-demo.command`
+- **Linux:** run `./try-demo.sh`
+
+The demo uses sample data with these logins (for the demo only):
+
+- Admin: `admin`, password `Admin-pass-2026`
+- Faculty: `dr.khan` or `ms.fatima`, password `Teach-pass-2026`
+- Students: `hamza`, `ayesha`, `bilal`, `sara`, `usman` or `zainab`, password `Study-pass-2026`
+
+To start with your own data, run `cms` (`cms.exe` on Windows) instead. It asks you to create the admin account on the first run.
+
+The builds are not code-signed, so Windows SmartScreen and macOS Gatekeeper warn the first time. `START-HERE.txt` in the download explains how to allow them, and `SHA256SUMS.txt` on the release page lets you check the files. GitHub Actions builds every release from its tagged commit, runs the tests, and starts each download and logs in to the demo data before publishing it.
+
 ## Build and run
 
 You need CMake 3.16 or newer and a C++17 compiler: Visual Studio 2019 or newer, GCC 9 or newer, or Clang 10 or newer. There are no other dependencies.
@@ -104,6 +126,10 @@ GitHub Actions builds the project and runs the tests on Windows, Linux and macOS
 **Home screen**
 
 ![Home screen](docs/screenshots/01-home.png)
+
+**A student's attendance page**
+
+![A student's attendance page](docs/screenshots/04-student-attendance.png)
 
 **A warning right after a student logs in**
 
@@ -156,7 +182,8 @@ The project keeps the object-oriented design from the course:
   - `console`: boxes, menus, safe number input and hidden password input
   - `app`: the screens. `AdminDashboard`, `FacultyDashboard` and `StudentDashboard` share one `Dashboard` base class.
 - `tests/`: the tests
-- `.github/workflows/`: the build on all three systems
+- `demo/`: the sample data and launchers that ship with each release
+- `.github/workflows/`: the build on all three systems, and the release builds
 
 ## Limitations
 

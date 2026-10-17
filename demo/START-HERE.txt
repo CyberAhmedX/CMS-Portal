@@ -1,0 +1,53 @@
+CMS Portal
+==========
+
+A campus management system that runs in the terminal.
+Source code: https://github.com/CyberAhmedX/cms-portal
+
+
+TRY IT WITH SAMPLE DATA
+
+  Windows  Double-click try-demo.bat
+  macOS    Double-click try-demo.command (read "First run on macOS" below)
+  Linux    Open a terminal in this folder and run ./try-demo.sh
+
+
+DEMO LOGINS (sample data only)
+
+  Admin portal     admin                                      Admin-pass-2026
+  Faculty portal   dr.khan, ms.fatima                         Teach-pass-2026
+  Student portal   hamza, ayesha, bilal, sara, usman, zainab  Study-pass-2026
+
+  Try this: log in as dr.khan, mark attendance (tab 3), open the class
+  report (tab 5), then log in as hamza to see the attendance warning.
+
+
+USE IT WITH YOUR OWN DATA
+
+  Run cms.exe (Windows) or ./cms (macOS and Linux) from this folder.
+  The first run asks you to create the admin account, and everything
+  is saved in a "data" folder next to it.
+
+
+FIRST RUN ON WINDOWS
+
+  The program is not code-signed, so Windows may show "Windows protected
+  your PC". Click "More info", then "Run anyway".
+
+
+FIRST RUN ON macOS
+
+  The program is not signed by an Apple developer account, so macOS blocks
+  it the first time. To allow it:
+    1. Open Terminal.
+    2. Type   xattr -dr com.apple.quarantine   followed by a space.
+    3. Drag this folder into the Terminal window and press Enter.
+  Then double-click try-demo.command.
+
+
+CHECK YOUR DOWNLOAD
+
+  The release page lists a SHA256SUMS.txt file. Compare it with:
+    Windows  certutil -hashfile <file> SHA256
+    macOS    shasum -a 256 <file>
+    Linux    sha256sum <file>
