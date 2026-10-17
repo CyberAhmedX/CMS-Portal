@@ -8,7 +8,7 @@ Every screen has the same layout: a campus card with your name and the current t
 
 *A faculty member marks hamza absent, the class report shows he can no longer sit the exam, and hamza sees the warning when he logs in.*
 
-**Try it without compiling anything:** [download the latest release](https://github.com/CyberAhmedX/cms-portal/releases/latest) for Windows, macOS or Linux. It comes with sample data to explore.
+**Try it without compiling anything:** [download the latest release](https://github.com/CyberAhmedX/CMS-Portal/releases/latest) for Windows, macOS or Linux. It comes with sample data to explore.
 
 ## Features
 
@@ -71,7 +71,7 @@ Each of these has a regression test in [`tests/test_portal.cpp`](tests/test_port
 
 ## Download and run
 
-Each [release](https://github.com/CyberAhmedX/cms-portal/releases/latest) has a ready-to-run download for Windows (64-bit), macOS (Apple silicon and Intel) and Linux (x64). Unzip it and start the demo:
+Each [release](https://github.com/CyberAhmedX/CMS-Portal/releases/latest) has a ready-to-run download for Windows (64-bit), macOS (Apple silicon and Intel) and Linux (x64). Unzip it and start the demo:
 
 - **Windows:** double-click `try-demo.bat`
 - **macOS:** double-click `try-demo.command`

@@ -41,6 +41,7 @@ jobs:
           fi
 
   build:
+    name: build (${{ matrix.target }})
     needs: version
     strategy:
       fail-fast: false
@@ -53,7 +54,7 @@ jobs:
           - os: ubuntu-22.04
             target: linux-x64
             # Built on an older Ubuntu with the C++ runtime linked in, so it runs on most distributions
-            flags: -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+            flags: -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc -s"
           - os: macos-latest
             target: macos-universal
             # One binary for both Apple silicon and Intel Macs
@@ -87,6 +88,8 @@ jobs:
             macos-*)
               cp build/cms demo/try-demo.command "dist/$NAME/"
               chmod +x "dist/$NAME/cms" "dist/$NAME/try-demo.command"
+              strip "dist/$NAME/cms"
+              lipo "dist/$NAME/cms" -verify_arch arm64 x86_64
               lipo -info "dist/$NAME/cms"
               (cd dist && tar -czf "$NAME.tar.gz" "$NAME") ;;
             linux-*)

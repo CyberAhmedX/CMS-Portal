@@ -2,7 +2,7 @@ CMS Portal
 ==========
 
 A campus management system that runs in the terminal.
-Source code: https://github.com/CyberAhmedX/cms-portal
+Source code: https://github.com/CyberAhmedX/CMS-Portal
 
 
 TRY IT WITH SAMPLE DATA
